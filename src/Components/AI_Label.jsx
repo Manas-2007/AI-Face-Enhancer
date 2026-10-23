@@ -1,5 +1,4 @@
-import { useState } from "react";
-
+import { useEffect, useState } from "react";
 const models = [
   {
     id: "codeformer",
@@ -22,8 +21,8 @@ const models = [
     background: "rgba(36, 224, 176, 0.08)",
   },
   {
-    id: "facesparnet",
-    name: "Face-SPARNet",
+    id: "sparnethd",
+    name: "SPARNetHD",
     subtitle: "Super Resolution",
     description: "Recover facial resolution",
     color: "#ffae42",
@@ -43,6 +42,8 @@ const models = [
   },
 ];
 
+const OUTPUT_SIZES = [128, 256, 512];
+
 function ModelIcon({ color }) {
   return (
     <svg
@@ -58,7 +59,6 @@ function ModelIcon({ color }) {
         stroke={color}
         strokeWidth="1.6"
       />
-
       <rect
         x="10"
         y="10"
@@ -68,24 +68,20 @@ function ModelIcon({ color }) {
         stroke={color}
         strokeWidth="1.7"
       />
-
       <path
         d="M15 18.5Q22 12 29 18.5V24Q22 32 15 24Z"
         stroke={color}
         strokeWidth="1.5"
         strokeLinejoin="round"
       />
-
       <circle cx="19" cy="20" r="1.5" fill={color} />
       <circle cx="25" cy="20" r="1.5" fill={color} />
-
       <path
         d="M19 25Q22 27.5 25 25"
         stroke={color}
         strokeWidth="1.5"
         strokeLinecap="round"
       />
-
       <path
         d="M22 5.5V8M35 22H38"
         stroke={color}
@@ -95,7 +91,6 @@ function ModelIcon({ color }) {
     </svg>
   );
 }
-
 function SparkleIcon() {
   return (
     <svg
@@ -113,7 +108,6 @@ function SparkleIcon() {
     </svg>
   );
 }
-
 function ComparisonIcon() {
   return (
     <svg
@@ -134,7 +128,6 @@ function ComparisonIcon() {
     </svg>
   );
 }
-
 function LoadingIcon() {
   return (
     <svg
@@ -151,7 +144,6 @@ function LoadingIcon() {
         strokeWidth="3"
         opacity=".25"
       />
-
       <path
         d="M21 12a9 9 0 0 0-9-9"
         stroke="currentColor"
@@ -161,35 +153,104 @@ function LoadingIcon() {
     </svg>
   );
 }
-
 export default function AI_Label({
   selectedImage,
   onGenerateModel,
   onCompareAll,
   onModelSelect,
+  openScalePickerSignal = 0,
 }) {
-  const [activeModel, setActiveModel] = useState("codeformer");
+  const [activeModel, setActiveModel] = useState("sparnethd");
   const [generatingModel, setGeneratingModel] = useState(null);
   const [isComparing, setIsComparing] = useState(false);
   const [message, setMessage] = useState("");
+  const [scalePickerModel, setScalePickerModel] = useState(null);
+  const [outputSize, setOutputSize] = useState(512);
+  const [inputDimensions, setInputDimensions] = useState(null);
+  const [referenceImage, setReferenceImage] = useState(null);
+  const [referencePanelOpen, setReferencePanelOpen] = useState(false);
+
+  useEffect(() => {
+    const file = selectedImage?.file;
+    let active = true;
+
+    setScalePickerModel(null);
+    setOutputSize(512);
+    setReferenceImage(null);
+    setReferencePanelOpen(false);
+
+    if (!file) {
+      setInputDimensions(null);
+      return undefined;
+    }
+
+    const imageUrl = URL.createObjectURL(file);
+    const probe = new Image();
+
+    probe.onload = () => {
+      if (active) {
+        setInputDimensions({
+          width: probe.naturalWidth,
+          height: probe.naturalHeight,
+        });
+      }
+    };
+
+    probe.onerror = () => {
+      if (active) setInputDimensions(null);
+    };
+
+    probe.src = imageUrl;
+
+    return () => {
+      active = false;
+      probe.onload = null;
+      probe.onerror = null;
+      URL.revokeObjectURL(imageUrl);
+    };
+  }, [selectedImage?.file]);
+
+  // The Hero action also opens the selector rather than generating at a hidden default size.
+  useEffect(() => {
+    if (!openScalePickerSignal) return;
+
+    if (!selectedImage?.file) {
+      setMessage("Upload an image first to choose an output size.");
+      return;
+    }
+
+    setActiveModel("sparnethd");
+    setMessage("");
+    setOutputSize(512);
+    setScalePickerModel("sparnethd");
+    onModelSelect?.("sparnethd");
+  }, [openScalePickerSignal]);
 
   const selectModel = (model) => {
     setActiveModel(model.id);
+    setScalePickerModel(null);
     setMessage("");
     onModelSelect?.(model.id);
   };
 
-  const generateModel = async (model) => {
+  const openScalePicker = (model) => {
     if (generatingModel || isComparing) return;
+
+    if (!["codeformer", "restoreformer", "sparnethd", "rgformer"].includes(model.id)) {
+      setMessage("This model is not connected yet.");
+      return;
+    }
 
     if (!selectedImage?.file) {
       setMessage("Upload an image first to generate an enhanced result.");
       return;
     }
 
-    setActiveModel(model.id);
-    setMessage("");
-    onModelSelect?.(model.id);
+    if (model.id === "rgformer" && !referenceImage) {
+      setReferencePanelOpen(true);
+      setMessage("Add a clear, high-quality reference photo of the same person in the RGFormer reference dropdown.");
+      return;
+    }
 
     if (!onGenerateModel) {
       setMessage(
@@ -198,16 +259,68 @@ export default function AI_Label({
       return;
     }
 
+    setActiveModel(model.id);
+    setMessage("");
+    setOutputSize(512);
+    setScalePickerModel(model.id);
+    onModelSelect?.(model.id);
+  };
+
+  const runSelectedModel = async (model) => {
+    if (generatingModel || isComparing) return;
+
+    if (!selectedImage?.file) {
+      setScalePickerModel(null);
+      setMessage("Upload an image first to generate an enhanced result.");
+      return;
+    }
+
+    if (!["codeformer", "restoreformer", "sparnethd", "rgformer"].includes(model.id)) {
+      setMessage("This model is not connected yet.");
+      return;
+    }
+
+    if (model.id === "rgformer" && !referenceImage) {
+      setReferencePanelOpen(true);
+      setMessage("Add a clear, high-quality reference photo of the same person in the RGFormer reference dropdown.");
+      return;
+    }
+
+    if (!onGenerateModel) {
+      setMessage("Connect the Python inference backend to run this model.");
+      return;
+    }
+
+    setMessage("");
+    setScalePickerModel(null);
     setGeneratingModel(model.id);
 
     try {
-      await onGenerateModel(model.id);
+      await onGenerateModel(model.id, outputSize, referenceImage);
     } catch (error) {
       console.error(error);
-      setMessage(`Unable to process ${model.name}. Please try again.`);
+      setMessage(
+        error?.message ||
+          `Unable to process ${model.name}. Please try again.`
+      );
     } finally {
       setGeneratingModel(null);
     }
+  };
+
+  const getScaleCaption = (size) => {
+    const inputSide = inputDimensions
+      ? Math.max(inputDimensions.width, inputDimensions.height)
+      : null;
+
+    if (inputSide && inputSide <= 128) {
+      const factor = size / inputSide;
+      const formattedFactor = Number(factor.toFixed(2)).toString();
+      return `${formattedFactor}× from input`;
+    }
+
+    if (size === 512) return "Native 512px face";
+    return "Resized face crop";
   };
 
   const compareAll = async () => {
@@ -218,10 +331,16 @@ export default function AI_Label({
       return;
     }
 
+    if (!referenceImage) {
+      setActiveModel("rgformer");
+      setReferencePanelOpen(true);
+      onModelSelect?.("rgformer");
+      setMessage("Add a high-quality reference photo of the same person in the RGFormer reference dropdown before comparing all four models.");
+      return;
+    }
+
     if (!onCompareAll) {
-      setMessage(
-        "Comparison is ready for backend integration. Actual metrics will be measured after model inference is connected."
-      );
+      setMessage("The model-comparison action is not connected yet.");
       return;
     }
 
@@ -229,7 +348,7 @@ export default function AI_Label({
     setIsComparing(true);
 
     try {
-      await onCompareAll();
+      await onCompareAll(referenceImage);
     } catch (error) {
       console.error(error);
       setMessage("Comparison failed. Please try again.");
@@ -237,7 +356,6 @@ export default function AI_Label({
       setIsComparing(false);
     }
   };
-
   return (
     <section className="w-full px-4 pb-6 pt-2 sm:px-5 sm:pb-8 lg:px-7">
       <style>{`
@@ -251,7 +369,6 @@ export default function AI_Label({
             transform: translateY(0) scale(1);
           }
         }
-
         @keyframes aiLabelHalo {
           0%, 100% {
             box-shadow: 0 0 10px var(--model-glow);
@@ -260,7 +377,6 @@ export default function AI_Label({
             box-shadow: 0 0 23px var(--model-glow);
           }
         }
-
         @keyframes aiLabelShine {
           0% {
             transform: translateX(-160%) skewX(-20deg);
@@ -269,7 +385,6 @@ export default function AI_Label({
             transform: translateX(260%) skewX(-20deg);
           }
         }
-
         @keyframes aiLabelFloat {
           0%, 100% {
             transform: translateY(0);
@@ -278,7 +393,6 @@ export default function AI_Label({
             transform: translateY(-3px);
           }
         }
-
         .ai-model-card {
           isolation: isolate;
           animation: aiLabelEnter .65s cubic-bezier(.2,.8,.2,1) both;
@@ -288,7 +402,6 @@ export default function AI_Label({
             box-shadow .3s ease,
             background-color .3s ease;
         }
-
         .ai-model-card::before {
           position: absolute;
           content: "";
@@ -304,12 +417,10 @@ export default function AI_Label({
           transition: opacity .35s ease;
           pointer-events: none;
         }
-
         .ai-model-card:hover::before,
         .ai-model-card-active::before {
           opacity: 1;
         }
-
         .ai-model-card:hover {
           transform: translateY(-5px);
           border-color: var(--model-color);
@@ -317,23 +428,19 @@ export default function AI_Label({
             0 12px 28px var(--model-glow),
             inset 0 0 24px rgba(255,255,255,.015);
         }
-
         .ai-model-card-active {
           border-color: var(--model-color);
           animation:
             aiLabelEnter .65s cubic-bezier(.2,.8,.2,1) both,
             aiLabelHalo 3.5s ease-in-out 1s infinite;
         }
-
         .ai-model-icon {
           transition: filter .3s ease;
         }
-
         .ai-model-card:hover .ai-model-icon {
           animation: aiLabelFloat 1.4s ease-in-out infinite;
           filter: drop-shadow(0 0 8px var(--model-color));
         }
-
         .ai-model-shine {
           position: absolute;
           top: 0;
@@ -349,15 +456,12 @@ export default function AI_Label({
           );
           transform: translateX(-160%) skewX(-20deg);
         }
-
         .ai-model-generate:hover .ai-model-shine {
           animation: aiLabelShine .85s ease forwards;
         }
-
         .ai-model-generate:active {
           transform: scale(.975);
         }
-
         @media (prefers-reduced-motion: reduce) {
           .ai-model-card,
           .ai-model-card-active,
@@ -369,35 +473,29 @@ export default function AI_Label({
           }
         }
       `}</style>
-
       {/* Section heading */}
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3 sm:mb-5">
         <div>
           <div className="mb-1.5 flex items-center gap-2">
             <span className="h-5 w-1 rounded-full bg-gradient-to-b from-cyan-300 to-blue-600" />
-
             <h2 className="text-lg font-bold tracking-tight text-white sm:text-xl">
               Choose Your AI Model
             </h2>
           </div>
-
           <p className="pl-3 text-xs leading-relaxed text-slate-400 sm:text-sm">
             Select a model to enhance your image or compare all four.
           </p>
         </div>
-
         <span className="rounded-full border border-blue-400/20 bg-blue-400/[0.07] px-3 py-1.5 text-[10px] font-semibold tracking-wide text-blue-200 sm:text-xs">
           04 MODELS AVAILABLE
         </span>
       </div>
-
       {/* Model cards and comparison */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))_155px]">
         {models.map((model, index) => {
           const isActive = activeModel === model.id;
           const isGenerating = generatingModel === model.id;
           const isBusy = Boolean(generatingModel) || isComparing;
-
           return (
             <article
               key={model.id}
@@ -432,7 +530,6 @@ export default function AI_Label({
                   opacity: isActive ? 1 : 0.35,
                 }}
               />
-
               {/* Model heading */}
               <div className="flex min-w-0 items-center gap-3">
                 <div
@@ -447,7 +544,6 @@ export default function AI_Label({
                 >
                   <ModelIcon color={model.color} />
                 </div>
-
                 <div className="min-w-0 flex-1">
                   <h3
                     className="break-words text-sm font-bold tracking-tight sm:text-base"
@@ -457,12 +553,10 @@ export default function AI_Label({
                   >
                     {model.name}
                   </h3>
-
                   <p className="mt-1 text-[11px] leading-snug text-slate-400 sm:text-xs">
                     {model.subtitle}
                   </p>
                 </div>
-
                 {isActive && (
                   <span
                     className="h-2.5 w-2.5 shrink-0 rounded-full"
@@ -474,19 +568,72 @@ export default function AI_Label({
                   />
                 )}
               </div>
-
               {/* Short description */}
               <p className="mb-4 mt-4 text-xs leading-relaxed text-slate-400 sm:text-[13px]">
                 {model.description}
               </p>
-
+              {model.id === "rgformer" && (
+                <div
+                  className="mb-3 rounded-xl border border-fuchsia-400/25 bg-fuchsia-400/[0.04]"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    aria-expanded={referencePanelOpen}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setReferencePanelOpen((open) => !open);
+                      setMessage("");
+                    }}
+                    className="flex min-h-10 w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left transition-colors hover:bg-fuchsia-400/[0.07] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-300"
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-xs font-semibold text-fuchsia-100">
+                        {referenceImage ? "Reference photo added" : "Add reference photo"}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[10px] text-slate-400">
+                        {referenceImage ? referenceImage.name : "Same person · higher quality"}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2 text-[10px] font-semibold text-fuchsia-200">
+                      {referenceImage ? "Change" : "Choose"}
+                      <span aria-hidden="true" className={`inline-block transition-transform ${referencePanelOpen ? "rotate-180" : ""}`}>⌄</span>
+                    </span>
+                  </button>
+                  {referencePanelOpen && (
+                    <div className="border-t border-fuchsia-400/20 px-3 pb-3 pt-2">
+                      <label className="block text-[11px] font-medium text-slate-200">
+                        Select a clear photo of the same person
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0] || null;
+                            setReferenceImage(file);
+                            if (file) {
+                              setActiveModel("rgformer");
+                              onModelSelect?.("rgformer");
+                              setReferencePanelOpen(false);
+                            }
+                            setMessage("");
+                          }}
+                          className="mt-2 block w-full cursor-pointer text-[10px] text-slate-300 file:mr-2 file:rounded-md file:border-0 file:bg-fuchsia-400/15 file:px-2 file:py-1.5 file:text-[10px] file:font-semibold file:text-fuchsia-100 hover:file:bg-fuchsia-400/25"
+                        />
+                      </label>
+                      <p className="mt-2 text-[10px] leading-relaxed text-slate-400">
+                        RGFormer automatically crops the face and estimates a reference mask.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
               {/* Generate */}
               <button
                 type="button"
                 disabled={isBusy}
                 onClick={(event) => {
                   event.stopPropagation();
-                  generateModel(model);
+                  openScalePicker(model);
                 }}
                 className="ai-model-generate group relative flex min-h-11 w-full items-center justify-center gap-2 overflow-hidden rounded-lg border px-3 py-2.5 text-sm font-bold transition-all duration-300 hover:brightness-125 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300 disabled:cursor-wait disabled:opacity-60"
                 style={{
@@ -499,7 +646,6 @@ export default function AI_Label({
                 }}
               >
                 <span className="ai-model-shine" />
-
                 <span className="relative z-10">
                   {isGenerating ? (
                     <span className="flex items-center gap-2">
@@ -514,7 +660,90 @@ export default function AI_Label({
                   )}
                 </span>
               </button>
+              {scalePickerModel === model.id && (
+                <div
+                  className="mt-4 rounded-xl border p-3"
+                  style={{
+                    borderColor: `${model.color}60`,
+                    background: "rgba(2, 9, 20, 0.76)",
+                  }}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="mb-3">
+                    <p className="text-xs font-bold text-slate-100">
+                      Choose rescaling factor
+                    </p>
+                    <p className="mt-1 text-[10px] leading-relaxed text-slate-400">
+                      Select the final output dimensions before generating.
+                    </p>
+                  </div>
 
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {OUTPUT_SIZES.map((size) => {
+                      const isSelectedSize = outputSize === size;
+                      return (
+                        <button
+                          key={size}
+                          type="button"
+                          aria-pressed={isSelectedSize}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOutputSize(size);
+                          }}
+                          className="flex min-w-0 flex-col items-center justify-center rounded-lg border px-1 py-2 transition-colors"
+                          style={{
+                            borderColor: isSelectedSize
+                              ? model.color
+                              : "rgba(148, 163, 184, 0.22)",
+                            backgroundColor: isSelectedSize
+                              ? model.background
+                              : "rgba(15, 23, 42, 0.45)",
+                            color: isSelectedSize ? model.light : "#cbd5e1",
+                          }}
+                        >
+                          <span className="text-xs font-bold">{size}px</span>
+                          <span className="mt-1 text-center text-[9px] leading-tight text-slate-400">
+                            {getScaleCaption(size)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <p className="mt-3 text-[10px] leading-relaxed text-slate-500">
+                    {model.name} produces a 512×512 restored face crop. The
+                    128px and 256px options resize that result to your chosen dimensions.
+                  </p>
+
+                  <div className="mt-3 grid grid-cols-[auto_1fr] gap-2">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setScalePickerModel(null);
+                      }}
+                      className="rounded-lg border border-slate-600/60 px-3 py-2 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-800/70"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        runSelectedModel(model);
+                      }}
+                      className="flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition-all hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
+                      style={{
+                        background: `linear-gradient(110deg, ${model.color}, ${model.light})`,
+                        color: "#04101e",
+                      }}
+                    >
+                      <SparkleIcon />
+                      Generate {outputSize}×{outputSize}
+                    </button>
+                  </div>
+                </div>
+              )}
               {/* Selected status */}
               <div className="mt-3 flex items-center justify-center gap-1.5 text-[10px] text-slate-500">
                 <span
@@ -525,13 +754,11 @@ export default function AI_Label({
                     backgroundColor: isActive ? model.color : "#475569",
                   }}
                 />
-
-                {isActive ? "Ready for enhancement" : "Click to select"}
+                {isActive ? (scalePickerModel === model.id ? "Choose output size" : "Ready for enhancement") : "Click to select"}
               </div>
             </article>
           );
         })}
-
         {/* Comparison card */}
         <button
           type="button"
@@ -556,27 +783,22 @@ export default function AI_Label({
           style={{ animation: "aiLabelEnter .7s ease-out .4s both" }}
         >
           <div className="absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/80 to-transparent" />
-
           <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-400/[0.07] text-cyan-300 transition-all duration-300 group-hover:scale-110 group-hover:rotate-3 group-hover:shadow-[0_0_20px_rgba(34,211,238,0.18)]">
             {isComparing ? <LoadingIcon /> : <ComparisonIcon />}
           </div>
-
           <div>
             <span className="block text-sm font-bold sm:text-base">
               {isComparing ? "Comparing..." : "Compare Models"}
             </span>
-
             <span className="mt-1.5 block text-xs leading-relaxed text-slate-400">
               Analyze all four outputs
             </span>
           </div>
-
           <span className="flex items-center gap-1 text-xs font-semibold text-cyan-300 transition-transform duration-300 group-hover:translate-x-1">
             Open comparison <span aria-hidden="true">→</span>
           </span>
         </button>
       </div>
-
       {/* Status message */}
       {message && (
         <div

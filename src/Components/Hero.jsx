@@ -1,3 +1,4 @@
+
 import { useRef, useState } from "react";
 
 export default function Hero({
@@ -54,7 +55,7 @@ export default function Hero({
     onClear?.();
   };
 
-  // Run all models
+  // Open the output-size selector
   const handleRunAll = () => {
     if (!selectedImage?.file) {
       setNotice("Please upload an image first.");
@@ -65,15 +66,12 @@ export default function Hero({
     if (onRunAllModels) {
       onRunAllModels(selectedImage.file);
     } else {
-      setNotice(
-        "Image ready! Connect the Python backend to run all models."
-      );
+      setNotice("Image ready! The model-selection action is not connected yet.");
     }
   };
 
   return (
     <section className="w-full px-4 py-5 sm:px-5 sm:py-6 lg:px-7">
-
       <style>{`
         @keyframes heroEntrance {
           from {
@@ -162,7 +160,6 @@ export default function Hero({
       `}</style>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
-
         {/* HERO INTRO + UPLOAD */}
         <div
           className="
@@ -178,7 +175,6 @@ export default function Hero({
             md:col-span-2 xl:col-span-7
           "
         >
-
           {/* Decorative background glow */}
           <div
             className="
@@ -199,8 +195,6 @@ export default function Hero({
 
           {/* Heading */}
           <div className="flex min-w-0 flex-col justify-center">
-
-            {/* Small badge */}
             <div
               className="
                 mb-4 flex w-fit items-center gap-2
@@ -225,12 +219,10 @@ export default function Hero({
 
             <h2
               className="
-  text-[26px] font-bold leading-[1.2]
-  tracking-tight text-slate-100
-  sm:text-[28px]
-  lg:text-[30px]
-  2xl:text-[32px]
-"
+                text-[26px] font-bold leading-[1.2]
+                tracking-tight text-slate-100
+                sm:text-[28px] lg:text-[30px] 2xl:text-[32px]
+              "
             >
               Enhance Faces
 
@@ -251,10 +243,10 @@ export default function Hero({
 
             <p
               className="
-  mt-3 max-w-sm text-xs
-  leading-5 text-slate-400
-  sm:text-[13px] sm:leading-5
-"
+                mt-3 max-w-sm text-xs
+                leading-5 text-slate-400
+                sm:text-[13px] sm:leading-5
+              "
             >
               Bring your photos back to life. Restore facial
               details, improve clarity, and explore four
@@ -263,21 +255,23 @@ export default function Hero({
 
             {/* Feature indicators */}
             <div className="mt-5 flex flex-wrap gap-2">
-              {["Face Restoration", "Detail Recovery", "AI Upscaling"].map(
-                (feature) => (
-                  <span
-                    key={feature}
-                    className="
-                      rounded-md border border-slate-700/70
-                      bg-slate-800/40 px-2.5 py-1.5
-                      text-[10px] font-medium text-slate-300
-                      sm:text-[11px]
-                    "
-                  >
-                    {feature}
-                  </span>
-                )
-              )}
+              {[
+                "Face Restoration",
+                "Detail Recovery",
+                "AI Upscaling",
+              ].map((feature) => (
+                <span
+                  key={feature}
+                  className="
+                    rounded-md border border-slate-700/70
+                    bg-slate-800/40 px-2.5 py-1.5
+                    text-[10px] font-medium text-slate-300
+                    sm:text-[11px]
+                  "
+                >
+                  {feature}
+                </span>
+              ))}
             </div>
           </div>
 
@@ -306,7 +300,6 @@ export default function Hero({
               }
             `}
           >
-
             {/* Moving shine */}
             <span
               className="
@@ -347,7 +340,6 @@ export default function Hero({
                 focus-visible:ring-2 focus-visible:ring-cyan-400
               "
             >
-              {/* Upload icon */}
               <div
                 className="
                   upload-icon mb-4 flex h-16 w-16
@@ -409,7 +401,6 @@ export default function Hero({
           "
           style={{ animationDelay: "100ms" }}
         >
-
           <div className="mb-4 flex items-center justify-between gap-2">
             <h3 className="text-sm font-bold text-white sm:text-base">
               Your Image
@@ -430,7 +421,6 @@ export default function Hero({
             )}
           </div>
 
-          {/* Preview box */}
           <div
             className="
               relative flex min-h-[180px] flex-1
@@ -515,7 +505,6 @@ export default function Hero({
           "
           style={{ animationDelay: "200ms" }}
         >
-
           <div className="mb-4 flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-blue-400/20 bg-blue-400/[0.07]">
               <svg
@@ -534,9 +523,9 @@ export default function Hero({
             </div>
 
             <div>
-             <h3 className="text-sm font-semibold text-slate-100">
-  Quick Actions
-</h3>
+              <h3 className="text-sm font-semibold text-slate-100">
+                Quick Actions
+              </h3>
 
               <p className="mt-0.5 text-xs text-slate-500">
                 Ready when you are
@@ -545,8 +534,7 @@ export default function Hero({
           </div>
 
           <div className="flex flex-1 flex-col gap-3">
-
-            {/* Run All Models */}
+            {/* Open model output-size selector */}
             <button
               type="button"
               onClick={handleRunAll}
@@ -576,7 +564,7 @@ export default function Hero({
               </svg>
 
               <span className="relative">
-                Run All Models
+                Choose Output Size
               </span>
 
               <svg
@@ -593,7 +581,7 @@ export default function Hero({
               </svg>
             </button>
 
-            {/* Clear */}
+            {/* Clear image */}
             <button
               type="button"
               onClick={handleClear}
@@ -662,7 +650,7 @@ export default function Hero({
             </svg>
 
             <span className="text-[11px] leading-relaxed text-slate-500">
-              Local-first workflow · Your photos stay yours
+              AI-powered image processing · Privacy-conscious workflow
             </span>
           </div>
         </div>

@@ -12,8 +12,8 @@ const models = [
     softColor: "rgba(36, 221, 176, 0.10)",
   },
   {
-    id: "facesparnet",
-    name: "Face-SPARNet",
+    id: "sparnethd",
+    name: "SPARNetHD",
     color: "#ffad42",
     softColor: "rgba(255, 173, 66, 0.10)",
   },
@@ -233,10 +233,8 @@ export default function Preview({
   return (
     <section className="w-full px-4 pb-8 pt-2 sm:px-5 lg:px-7">
       <div className="overflow-hidden rounded-2xl border border-blue-500/25 bg-gradient-to-br from-[#07182e] via-[#041226] to-[#030b18] p-3 shadow-[0_10px_35px_rgba(0,0,0,0.15)] sm:p-4 lg:p-5">
-
         {/* SECTION HEADING */}
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3 sm:mb-6">
-
           <div className="flex min-w-0 items-center gap-3">
             {/* Blue-to-white accent line */}
             <span className="h-7 w-1 shrink-0 rounded-full bg-gradient-to-b from-cyan-300 via-blue-400 to-white shadow-[0_0_12px_rgba(56,170,255,0.35)]" />
@@ -267,10 +265,8 @@ export default function Preview({
 
         {/* IMAGE CARDS */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[1.3fr_repeat(4,minmax(0,1fr))]">
-
           {/* ORIGINAL */}
           <article className="group flex min-w-0 flex-col rounded-xl border border-blue-400/40 bg-gradient-to-b from-[#0a1b33] to-[#030d1c] p-3 transition-all duration-300 hover:border-blue-300/70 hover:shadow-[0_0_22px_rgba(56,170,255,0.08)] sm:p-3.5">
-
             <div className="mb-3 flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-slate-100">
                 Original Image
