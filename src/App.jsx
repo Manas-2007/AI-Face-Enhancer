@@ -134,9 +134,10 @@ function App() {
       }
 
       const response = await fetch(`${API_BASE_URL}/api/enhance`, {
-        method: "POST",
-        body: formData,
-      });
+  method: "POST",
+  credentials: "include",
+  body: formData,
+});
 
       if (!response.ok) {
         const responseText = await response.text();
