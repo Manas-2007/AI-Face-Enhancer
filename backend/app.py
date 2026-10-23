@@ -1,5 +1,7 @@
 
 import io
+import os
+import secrets
 import subprocess
 import tempfile
 import shutil
@@ -9,7 +11,15 @@ from pathlib import Path
 import numpy as np
 import torch
 from PIL import Image, UnidentifiedImageError
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import (
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    Depends,
+    Header,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
@@ -55,26 +65,49 @@ RGFORMER_PREPARE_SCRIPT = RGFORMER_DIR / "prepare_rgformer_inputs.py"
 RGFORMER_WEIGHTS = RGFORMER_DIR / "weights" / "best.pt"
 RGFORMER_CODEFORMER_CACHE = RGFORMER_DIR / "weights" / "CodeFormer" / "codeformer.pth"
 
+
+# --------------------------------------------------
+# API AUTHENTICATION
+# --------------------------------------------------
+
+def verify_api_key(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    """
+    Protect the API using a random key configured outside the source code.
+    Never commit the key to GitHub or embed it in a Vite environment variable.
+    """
+    expected_key = os.environ.get("FACE_ENHANCER_API_KEY", "")
+
+    if not expected_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Backend API key is not configured.",
+        )
+
+    if not x_api_key or not secrets.compare_digest(
+        x_api_key, expected_key
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing API key.",
+        )
+
+
 # --------------------------------------------------
 # IMAGE METRICS
 # --------------------------------------------------
 
 def calculate_image_metrics(image: Image.Image) -> dict:
-    """
-    Calculate observable image statistics.
-    These are measurements, not subjective quality ratings.
-    """
+    """Calculate image statistics, not subjective quality scores."""
     rgb = np.asarray(image.convert("RGB"), dtype=np.float32)
 
-    # Approximate standard luminance on a 0-255 scale.
     luminance = (
         0.2126 * rgb[:, :, 0]
         + 0.7152 * rgb[:, :, 1]
         + 0.0722 * rgb[:, :, 2]
     )
 
-    # Variance of a four-neighbour Laplacian as a sharpness estimate.
-    # Higher values can also result from noise or artifacts.
     if luminance.shape[0] >= 3 and luminance.shape[1] >= 3:
         center = luminance[1:-1, 1:-1]
 
@@ -112,7 +145,7 @@ app = FastAPI(
         "Face restoration with CodeFormer, RestoreFormer++, "
         "SPARNetHD and reference-guided RGFormer"
     ),
-    version="1.6.0",
+    version="1.7.0",
 )
 
 app.add_middleware(
@@ -143,7 +176,10 @@ app.add_middleware(
 # HEALTH CHECK
 # --------------------------------------------------
 
-@app.get("/api/health")
+@app.get(
+    "/api/health",
+    dependencies=[Depends(verify_api_key)],
+)
 def health_check():
     sparnethd_files = {
         "python_environment": SPARNET_PYTHON_EXE.is_file(),
@@ -246,7 +282,6 @@ def run_codeformer(
     output_dir: Path,
     tiny_input: bool,
 ):
-    """Build the CodeFormer inference command."""
     required_files = [
         CODEFORMER_PYTHON_EXE,
         CODEFORMER_SCRIPT,
@@ -254,16 +289,12 @@ def run_codeformer(
         CODEFORMER_DETECTION,
         CODEFORMER_PARSING,
     ]
-
     missing = [str(path) for path in required_files if not path.is_file()]
 
     if missing:
         raise HTTPException(
             status_code=500,
-            detail=(
-                "CodeFormer setup is incomplete. Missing: "
-                + ", ".join(missing)
-            ),
+            detail="CodeFormer setup is incomplete. Missing: " + ", ".join(missing),
         )
 
     command = [
@@ -289,22 +320,17 @@ def run_restoreformerpp(
     output_dir: Path,
     tiny_input: bool,
 ):
-    """Build the RestoreFormer++ inference command."""
     required_files = [
         RESTOREFORMER_PYTHON_EXE,
         RESTOREFORMER_SCRIPT,
         RESTOREFORMER_DIR / "RestoreFormer" / "RestoreFormer.py",
     ]
-
     missing = [str(path) for path in required_files if not path.is_file()]
 
     if missing:
         raise HTTPException(
             status_code=500,
-            detail=(
-                "RestoreFormer++ setup is incomplete. Missing: "
-                + ", ".join(missing)
-            ),
+            detail="RestoreFormer++ setup is incomplete. Missing: " + ", ".join(missing),
         )
 
     command = [
@@ -318,13 +344,9 @@ def run_restoreformerpp(
         "--save",
     ]
 
-    if tiny_input:
-        command.append("--aligned")
-    else:
-        command.append("--only_center_face")
+    command.append("--aligned" if tiny_input else "--only_center_face")
 
     output_path = output_dir / "restored_faces" / "input_00.png"
-
     return command, output_path, str(RESTOREFORMER_DIR), "image/png", 600
 
 
@@ -334,12 +356,8 @@ def run_sparnethd(
     output_dir: Path,
     tiny_input: bool,
 ):
-    """Build the SPARNetHD inference command."""
     if not SPARNET_PYTHON_EXE.is_file():
-        raise HTTPException(
-            status_code=500,
-            detail="SPARNet Python environment not found.",
-        )
+        raise HTTPException(status_code=500, detail="SPARNet Python environment not found.")
 
     if tiny_input:
         required_files = [
@@ -347,18 +365,12 @@ def run_sparnethd(
             HD_ALIGNED_SCRIPT,
             HD_WEIGHTS,
         ]
-
-        missing = [
-            str(path) for path in required_files if not path.is_file()
-        ]
+        missing = [str(path) for path in required_files if not path.is_file()]
 
         if missing:
             raise HTTPException(
                 status_code=500,
-                detail=(
-                    "SPARNetHD tiny-image setup is incomplete. Missing: "
-                    + ", ".join(missing)
-                ),
+                detail="SPARNetHD tiny-image setup is incomplete. Missing: " + ", ".join(missing),
             )
 
         command = [
@@ -376,14 +388,7 @@ def run_sparnethd(
             "--pretrain_model_path", str(HD_WEIGHTS),
             "--save_as_dir", str(output_dir),
         ]
-
-        return (
-            command,
-            output_dir / "input.png",
-            str(SPARNET_DIR),
-            "image/png",
-            300,
-        )
+        return command, output_dir / "input.png", str(SPARNET_DIR), "image/png", 300
 
     required_files = [
         SPARNET_PYTHON_EXE,
@@ -393,16 +398,12 @@ def run_sparnethd(
         LANDMARK_PREDICTOR,
         FFHQ_TEMPLATE,
     ]
-
     missing = [str(path) for path in required_files if not path.is_file()]
 
     if missing:
         raise HTTPException(
             status_code=500,
-            detail=(
-                "SPARNetHD setup is incomplete. Missing: "
-                + ", ".join(missing)
-            ),
+            detail="SPARNetHD setup is incomplete. Missing: " + ", ".join(missing),
         )
 
     command = [
@@ -419,13 +420,7 @@ def run_sparnethd(
         "--results_dir", str(output_dir),
     ]
 
-    return (
-        command,
-        output_dir / "HQ" / "000.jpg",
-        str(SPARNET_DIR),
-        "image/jpeg",
-        300,
-    )
+    return command, output_dir / "HQ" / "000.jpg", str(SPARNET_DIR), "image/jpeg", 300
 
 
 def run_rgformer(
@@ -434,7 +429,6 @@ def run_rgformer(
     temp_root: Path,
     output_dir: Path,
 ):
-    """Prepare face inputs and run RGFormer."""
     required_files = [
         RGFORMER_PYTHON_EXE,
         RGFORMER_SCRIPT,
@@ -443,16 +437,12 @@ def run_rgformer(
         RGFORMER_DIR / "model_cls.py",
         RGFORMER_DIR / "utils.py",
     ]
-
     missing = [str(path) for path in required_files if not path.is_file()]
 
     if missing:
         raise HTTPException(
             status_code=500,
-            detail=(
-                "RGFormer setup is incomplete. Missing: "
-                + ", ".join(missing)
-            ),
+            detail="RGFormer setup is incomplete. Missing: " + ", ".join(missing),
         )
 
     lq_dir = temp_root / "rgformer_lq"
@@ -481,39 +471,19 @@ def run_rgformer(
             timeout=90,
         )
     except subprocess.TimeoutExpired:
-        raise HTTPException(
-            status_code=504,
-            detail="RGFormer face preparation took too long.",
-        )
+        raise HTTPException(status_code=504, detail="RGFormer face preparation took too long.")
 
     if prepared.returncode != 0:
         log = (prepared.stderr or "") + "\n" + (prepared.stdout or "")
         print(f"RGFormer input preparation failed:\n{log[-4000:]}")
-
         lines = log.strip().splitlines()
-        user_detail = (
-            lines[-1] if lines
-            else "Could not prepare RGFormer face inputs."
-        )
+        user_detail = lines[-1] if lines else "Could not prepare RGFormer face inputs."
 
-        raise HTTPException(
-            status_code=422,
-            detail=user_detail[-500:],
-        )
+        raise HTTPException(status_code=422, detail=user_detail[-500:])
 
-    # Reuse the CodeFormer checkpoint if already available.
-    if (
-        CODEFORMER_WEIGHTS.is_file()
-        and not RGFORMER_CODEFORMER_CACHE.is_file()
-    ):
-        RGFORMER_CODEFORMER_CACHE.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-        shutil.copy2(
-            CODEFORMER_WEIGHTS,
-            RGFORMER_CODEFORMER_CACHE,
-        )
+    if CODEFORMER_WEIGHTS.is_file() and not RGFORMER_CODEFORMER_CACHE.is_file():
+        RGFORMER_CODEFORMER_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(CODEFORMER_WEIGHTS, RGFORMER_CODEFORMER_CACHE)
 
     command = [
         str(RGFORMER_PYTHON_EXE),
@@ -536,56 +506,38 @@ def run_rgformer(
 # IMAGE ENHANCEMENT
 # --------------------------------------------------
 
-@app.post("/api/enhance")
+@app.post(
+    "/api/enhance",
+    dependencies=[Depends(verify_api_key)],
+)
 def enhance_image(
     file: UploadFile = File(...),
     model_id: str = Form("sparnethd"),
     output_size: int = Form(512),
     ref_file: UploadFile | None = File(None),
 ):
-    if model_id not in (
-        "codeformer",
-        "restoreformer",
-        "sparnethd",
-        "rgformer",
-    ):
+    if model_id not in ("codeformer", "restoreformer", "sparnethd", "rgformer"):
         raise HTTPException(
             status_code=422,
-            detail=(
-                "model_id must be 'codeformer', 'restoreformer', "
-                "'sparnethd', or 'rgformer'."
-            ),
+            detail="model_id must be 'codeformer', 'restoreformer', 'sparnethd', or 'rgformer'.",
         )
 
     if output_size not in SUPPORTED_OUTPUT_SIZES:
-        raise HTTPException(
-            status_code=422,
-            detail="output_size must be 128, 256, or 512.",
-        )
+        raise HTTPException(status_code=422, detail="output_size must be 128, 256, or 512.")
 
     contents = file.file.read(MAX_UPLOAD_BYTES + 1)
 
     if len(contents) > MAX_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail="Image must be smaller than 10 MB.",
-        )
-
+        raise HTTPException(status_code=413, detail="Image must be smaller than 10 MB.")
     if not contents:
-        raise HTTPException(
-            status_code=400,
-            detail="Uploaded image is empty.",
-        )
+        raise HTTPException(status_code=400, detail="Uploaded image is empty.")
 
     try:
         with Image.open(io.BytesIO(contents)) as opened_image:
             opened_image.load()
             image = opened_image.convert("RGB")
     except (UnidentifiedImageError, OSError, ValueError):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid image. Upload a valid photo.",
-        )
+        raise HTTPException(status_code=400, detail="Invalid image. Upload a valid photo.")
 
     reference_image = None
 
@@ -593,30 +545,18 @@ def enhance_image(
         if ref_file is None:
             raise HTTPException(
                 status_code=422,
-                detail=(
-                    "RGFormer requires a clear, high-quality reference "
-                    "photo of the same person."
-                ),
+                detail="RGFormer requires a clear, high-quality reference photo of the same person.",
             )
 
         reference_contents = ref_file.file.read(MAX_UPLOAD_BYTES + 1)
 
         if len(reference_contents) > MAX_UPLOAD_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail="Reference image must be smaller than 10 MB.",
-            )
-
+            raise HTTPException(status_code=413, detail="Reference image must be smaller than 10 MB.")
         if not reference_contents:
-            raise HTTPException(
-                status_code=400,
-                detail="Uploaded reference image is empty.",
-            )
+            raise HTTPException(status_code=400, detail="Uploaded reference image is empty.")
 
         try:
-            with Image.open(
-                io.BytesIO(reference_contents)
-            ) as opened_reference:
+            with Image.open(io.BytesIO(reference_contents)) as opened_reference:
                 opened_reference.load()
                 reference_image = opened_reference.convert("RGB")
         except (UnidentifiedImageError, OSError, ValueError):
@@ -634,9 +574,7 @@ def enhance_image(
         "rgformer": "RGFormer",
     }[model_id]
 
-    with tempfile.TemporaryDirectory(
-        prefix=f"{model_id}_request_"
-    ) as temporary_directory:
+    with tempfile.TemporaryDirectory(prefix=f"{model_id}_request_") as temporary_directory:
         temp_root = Path(temporary_directory)
 
         input_path = temp_root / "input.png"
@@ -648,9 +586,7 @@ def enhance_image(
 
         input_dir = temp_root / "input"
         input_dir.mkdir()
-        (input_dir / "input.png").write_bytes(
-            input_path.read_bytes()
-        )
+        (input_dir / "input.png").write_bytes(input_path.read_bytes())
 
         output_dir = temp_root / "results"
         output_dir.mkdir()
@@ -658,53 +594,26 @@ def enhance_image(
         start_time = time.perf_counter()
 
         if model_id == "codeformer":
-            (
-                command,
-                output_path,
-                working_dir,
-                output_media_type,
-                timeout_seconds,
-            ) = run_codeformer(
+            command, output_path, working_dir, output_media_type, timeout_seconds = run_codeformer(
                 input_path=input_path,
                 output_dir=output_dir,
                 tiny_input=tiny_input,
             )
-
         elif model_id == "restoreformer":
-            (
-                command,
-                output_path,
-                working_dir,
-                output_media_type,
-                timeout_seconds,
-            ) = run_restoreformerpp(
+            command, output_path, working_dir, output_media_type, timeout_seconds = run_restoreformerpp(
                 input_path=input_path,
                 output_dir=output_dir,
                 tiny_input=tiny_input,
             )
-
         elif model_id == "rgformer":
-            (
-                command,
-                output_path,
-                working_dir,
-                output_media_type,
-                timeout_seconds,
-            ) = run_rgformer(
+            command, output_path, working_dir, output_media_type, timeout_seconds = run_rgformer(
                 input_path=input_path,
                 reference_path=reference_path,
                 temp_root=temp_root,
                 output_dir=output_dir,
             )
-
         else:
-            (
-                command,
-                output_path,
-                working_dir,
-                output_media_type,
-                timeout_seconds,
-            ) = run_sparnethd(
+            command, output_path, working_dir, output_media_type, timeout_seconds = run_sparnethd(
                 input_path=input_path,
                 input_dir=input_dir,
                 output_dir=output_dir,
@@ -722,25 +631,14 @@ def enhance_image(
         except subprocess.TimeoutExpired:
             raise HTTPException(
                 status_code=504,
-                detail=(
-                    f"{selected_model} took too long "
-                    "to process this image."
-                ),
+                detail=f"{selected_model} took too long to process this image.",
             )
 
         elapsed_seconds = time.perf_counter() - start_time
 
         if process.returncode != 0 or not output_path.is_file():
-            combined_logs = (
-                (process.stderr or "")
-                + "\n"
-                + (process.stdout or "")
-            )
-
-            print(
-                f"{selected_model} inference failed:\n"
-                f"{combined_logs[-6000:]}"
-            )
+            combined_logs = (process.stderr or "") + "\n" + (process.stdout or "")
+            print(f"{selected_model} inference failed:\n{combined_logs[-6000:]}")
 
             no_face_detected = (
                 "detect 0 faces" in combined_logs.lower()
@@ -767,7 +665,6 @@ def enhance_image(
 
         raw_output = output_path.read_bytes()
 
-    # Prepare final image and calculate measurements after resizing.
     try:
         with Image.open(io.BytesIO(raw_output)) as generated_image:
             result_image = generated_image.convert("RGB")
@@ -778,17 +675,12 @@ def enhance_image(
                 Image.Resampling.LANCZOS,
             )
 
-        # Metrics describe the exact image returned to the frontend.
         image_metrics = calculate_image_metrics(result_image)
 
         output_buffer = io.BytesIO()
 
         if output_media_type == "image/png":
-            result_image.save(
-                output_buffer,
-                format="PNG",
-                optimize=True,
-            )
+            result_image.save(output_buffer, format="PNG", optimize=True)
         else:
             result_image.save(
                 output_buffer,
