@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from "react";
 
 import Navbar from "./Components/Navbar";
@@ -10,6 +9,8 @@ import Comparison from "./Components/Comparison";
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
+const API_KEY_STORAGE_NAME = "face-enhancer-api-key";
+
 const MODEL_IDS = [
   "codeformer",
   "restoreformer",
@@ -17,15 +18,23 @@ const MODEL_IDS = [
   "rgformer",
 ];
 
-const API_KEY_STORAGE = "face-enhancer-api-key";
-
 function readNumberHeader(response, name) {
   const raw = response.headers.get(name);
 
-  if (raw == null || raw.trim() === "") return null;
+  if (raw == null || raw.trim() === "") {
+    return null;
+  }
 
   const value = Number(raw);
   return Number.isFinite(value) ? value : null;
+}
+
+function readStoredApiKey() {
+  try {
+    return sessionStorage.getItem(API_KEY_STORAGE_NAME) || "";
+  } catch {
+    return "";
+  }
 }
 
 function App() {
@@ -36,65 +45,60 @@ function App() {
   const [comparisonSummary, setComparisonSummary] = useState("");
   const [scalePickerRequest, setScalePickerRequest] = useState(0);
 
-  const [apiKey, setApiKey] = useState("");
-  const [apiKeyInput, setApiKeyInput] = useState("");
+  // Backend API key state.
+  const [apiKeyInput, setApiKeyInput] = useState(readStoredApiKey);
+  const [apiKey, setApiKey] = useState(readStoredApiKey);
   const [apiKeyMessage, setApiKeyMessage] = useState("");
 
   const previewUrlRef = useRef(null);
   const resultUrlsRef = useRef([]);
 
-  // Restore this browser tab's key after a page refresh.
-  useEffect(() => {
-    try {
-      const storedKey = sessionStorage.getItem(API_KEY_STORAGE);
+  // Save the API key for the current browser tab/session.
+  const handleSaveApiKey = (event) => {
+    event?.preventDefault();
 
-      if (storedKey) {
-        setApiKey(storedKey);
-        setApiKeyInput(storedKey);
-        setApiKeyMessage("API key loaded for this browser session.");
-      }
-    } catch {
-      setApiKeyMessage(
-        "Browser session storage is unavailable. Enter the key again."
-      );
-    }
-  }, []);
+    const trimmedKey = apiKeyInput.trim();
 
-  const saveApiKey = (event) => {
-    event.preventDefault();
-
-    const nextKey = apiKeyInput.trim();
-
-    if (!nextKey) {
-      setApiKeyMessage("Enter your backend API key first.");
+    if (!trimmedKey) {
+      setApiKey("");
+      setApiKeyMessage("Please enter your backend API key first.");
       return;
     }
 
     try {
-      sessionStorage.setItem(API_KEY_STORAGE, nextKey);
-      setApiKey(nextKey);
-      setApiKeyMessage("API key saved for this browser session.");
+      sessionStorage.setItem(API_KEY_STORAGE_NAME, trimmedKey);
     } catch {
       setApiKeyMessage(
-        "Unable to save this key in session storage. Check browser settings."
+        "Could not save the key in session storage. Please try another browser tab."
       );
+      return;
     }
+
+    setApiKey(trimmedKey);
+    setApiKeyInput(trimmedKey);
+    setApiKeyMessage(
+      "API key saved for this browser session. You can now generate images."
+    );
   };
 
-  const clearApiKey = () => {
+  // Remove the saved API key from the current browser session.
+  const handleClearApiKey = () => {
     try {
-      sessionStorage.removeItem(API_KEY_STORAGE);
+      sessionStorage.removeItem(API_KEY_STORAGE_NAME);
     } catch {
-      // Continue clearing in-memory state.
+      // The component can still clear its in-memory key.
     }
 
     setApiKey("");
     setApiKeyInput("");
-    setApiKeyMessage("API key cleared from this browser session.");
+    setApiKeyMessage("API key cleared.");
   };
 
   const clearResultUrls = () => {
-    resultUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    resultUrlsRef.current.forEach((url) => {
+      URL.revokeObjectURL(url);
+    });
+
     resultUrlsRef.current = [];
 
     setResults({});
@@ -103,9 +107,11 @@ function App() {
   };
 
   const clearPreviousResults = () => {
-    resultUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-    resultUrlsRef.current = [];
+    resultUrlsRef.current.forEach((url) => {
+      URL.revokeObjectURL(url);
+    });
 
+    resultUrlsRef.current = [];
     setResults({});
   };
 
@@ -123,7 +129,10 @@ function App() {
     const preview = URL.createObjectURL(file);
     previewUrlRef.current = preview;
 
-    setSelectedImage({ file, preview });
+    setSelectedImage({
+      file,
+      preview,
+    });
   };
 
   const handleClear = () => {
@@ -137,19 +146,20 @@ function App() {
     setSelectedImage(null);
   };
 
+  // Generate an image with the selected model.
   const handleGenerateModel = async (
     modelId,
     outputSize = 512,
     referenceFile = null
   ) => {
-    if (!MODEL_IDS.includes(modelId)) {
-      throw new Error("This model is not connected.");
-    }
-
     if (!apiKey) {
       throw new Error(
-        "Enter and save your backend API key at the top of the page first."
+        "Please enter and save your Backend API Key in the box below the navbar."
       );
+    }
+
+    if (!MODEL_IDS.includes(modelId)) {
+      throw new Error("This model is not connected.");
     }
 
     if (!selectedImage?.file) {
@@ -162,7 +172,10 @@ function App() {
       );
     }
 
-    setProcessing((previous) => ({ ...previous, [modelId]: true }));
+    setProcessing((previous) => ({
+      ...previous,
+      [modelId]: true,
+    }));
 
     setErrors((previous) => {
       const next = { ...previous };
@@ -172,6 +185,7 @@ function App() {
 
     try {
       const formData = new FormData();
+
       formData.append("file", selectedImage.file);
       formData.append("model_id", modelId);
       formData.append("output_size", String(outputSize));
@@ -180,6 +194,7 @@ function App() {
         formData.append("ref_file", referenceFile);
       }
 
+      // Send the saved API key to the protected backend.
       const response = await fetch(`${API_BASE_URL}/api/enhance`, {
         method: "POST",
         headers: {
@@ -197,12 +212,18 @@ function App() {
           const parsed = JSON.parse(responseText);
           detail = parsed.detail || responseText;
         } catch {
-          // Keep the raw server response when it isn't JSON.
+          // Keep response text if the server does not return JSON.
         }
 
         if (response.status === 401) {
           throw new Error(
-            "Backend rejected the API key. Check the key entered above."
+            "Invalid API key. Check your key in the Backend API Key box and save it again."
+          );
+        }
+
+        if (response.status === 503) {
+          throw new Error(
+            "Backend API key is not configured. Restart the backend with FACE_ENHANCER_API_KEY set."
           );
         }
 
@@ -219,8 +240,15 @@ function App() {
 
       const blob = await response.blob();
       const imageUrl = URL.createObjectURL(blob);
+
       resultUrlsRef.current.push(imageUrl);
 
+      const processingTime = readNumberHeader(
+        response,
+        "X-Processing-Time"
+      );
+
+      // Read actual image measurements returned by the backend.
       const metrics = {
         sharpness: readNumberHeader(response, "X-Image-Sharpness"),
         brightness: readNumberHeader(response, "X-Image-Brightness"),
@@ -230,20 +258,24 @@ function App() {
         height: readNumberHeader(response, "X-Output-Height"),
       };
 
-      const result = {
-        imageUrl,
-        processingTime: readNumberHeader(response, "X-Processing-Time"),
-        metrics,
-      };
-
       setResults((previous) => ({
         ...previous,
-        [modelId]: result,
+        [modelId]: {
+          imageUrl,
+          processingTime,
+          metrics,
+        },
       }));
 
-      return { modelId, success: true, ...result };
+      return {
+        modelId,
+        success: true,
+        processingTime,
+        metrics,
+      };
     } catch (error) {
-      const message = error?.message || `${modelId} inference failed.`;
+      const message =
+        error?.message || `${modelId} failed to process the image.`;
 
       setErrors((previous) => ({
         ...previous,
@@ -251,6 +283,7 @@ function App() {
       }));
 
       console.error(`${modelId} inference failed:`, error);
+
       throw error;
     } finally {
       setProcessing((previous) => ({
@@ -260,27 +293,31 @@ function App() {
     }
   };
 
-  // Open the existing output-size selector.
+  // The Hero action opens the existing output-size selector.
   const handleRunAllModels = () => {
     setScalePickerRequest((current) => current + 1);
   };
 
-  // Run sequentially to avoid overlapping GPU inference.
+  // Run models sequentially to avoid competing for GPU memory.
+  // A failed model does not stop the remaining models.
   const handleCompareAllModels = async (referenceFile) => {
+    if (!apiKey) {
+      throw new Error(
+        "Please enter and save your Backend API Key in the box below the navbar."
+      );
+    }
+
     if (!selectedImage?.file) {
       throw new Error("Please upload a face image first.");
     }
 
-    if (!apiKey) {
-      throw new Error("Enter and save your backend API key first.");
-    }
-
     if (!referenceFile) {
       throw new Error(
-        "Add a high-quality reference photo of the same person before comparing all four models."
+        "Add a high-quality reference photo of the same person in the RGFormer card before comparing all four models."
       );
     }
 
+    // Clear old results before a new comparison.
     clearPreviousResults();
     setErrors({});
     setComparisonSummary("");
@@ -314,11 +351,15 @@ function App() {
       );
     } else {
       setComparisonSummary(
-        "All four models failed. Check the individual errors in the comparison section."
+        "All four models failed. Check the individual errors shown in the comparison section."
       );
     }
 
-    return { successCount, failureCount, failures };
+    return {
+      successCount,
+      failureCount,
+      failures,
+    };
   };
 
   useEffect(() => {
@@ -327,7 +368,9 @@ function App() {
         URL.revokeObjectURL(previewUrlRef.current);
       }
 
-      resultUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      resultUrlsRef.current.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
     };
   }, []);
 
@@ -335,63 +378,100 @@ function App() {
     <div className="min-h-screen bg-[#030b1a] text-white">
       <Navbar />
 
-      <main>
-        {/* Session-only backend authentication */}
-        <section className="mx-4 mb-3 mt-4 rounded-xl border border-blue-500/25 bg-[#07182e] p-4 sm:mx-5 lg:mx-7">
-          <form onSubmit={saveApiKey} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="min-w-0 flex-1">
-              <label
-                htmlFor="backend-api-key"
-                className="block text-sm font-semibold text-slate-100"
-              >
-                Private backend access
-              </label>
+      {/* Backend API key panel — visible directly below the navbar. */}
+      <section className="mx-auto w-full max-w-6xl px-4 pt-5 sm:px-6 lg:px-8">
+        <div className="rounded-2xl border border-cyan-400/20 bg-[#071427] p-4 shadow-lg shadow-black/20 sm:p-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold text-white sm:text-lg">
+                Backend API Key
+              </h2>
 
-              <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                Enter the API key configured in your local backend. It is
-                stored in this browser tab's session storage.
+              <p className="mt-1 text-sm leading-6 text-slate-400">
+                Enter the secret key generated in your backend terminal to
+                connect this website to your local AI models.
               </p>
+
+              <div className="mt-2 flex items-center gap-2 text-xs">
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    apiKey ? "bg-emerald-400" : "bg-amber-400"
+                  }`}
+                />
+
+                <span
+                  className={
+                    apiKey ? "text-emerald-300" : "text-amber-300"
+                  }
+                >
+                  {apiKey ? "API key saved for this session" : "API key required"}
+                </span>
+              </div>
+            </div>
+
+            <form
+              onSubmit={handleSaveApiKey}
+              className="flex w-full flex-col gap-2 sm:flex-row md:max-w-2xl"
+            >
+              <label htmlFor="backend-api-key" className="sr-only">
+                Backend API Key
+              </label>
 
               <input
                 id="backend-api-key"
+                name="backend-api-key"
                 type="password"
-                autoComplete="off"
+                autoComplete="new-password"
                 spellCheck={false}
                 value={apiKeyInput}
-                onChange={(event) => setApiKeyInput(event.target.value)}
-                placeholder="Paste your backend API key"
-                className="mt-3 min-h-11 w-full rounded-lg border border-slate-600 bg-[#020914] px-3 py-2 text-sm text-white outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400"
+                onChange={(event) => {
+                  setApiKeyInput(event.target.value);
+                  setApiKeyMessage("");
+                }}
+                placeholder="Paste your backend API key here"
+                aria-describedby="api-key-message"
+                className="min-h-11 min-w-0 flex-1 rounded-xl border border-slate-700 bg-[#030b1a] px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
               />
 
-              {apiKeyMessage && (
-                <p
-                  role="status"
-                  className="mt-2 break-words text-xs text-cyan-200"
-                >
-                  {apiKeyMessage}
-                </p>
-              )}
-            </div>
-
-            <div className="flex shrink-0 gap-2">
               <button
                 type="submit"
-                className="min-h-10 rounded-lg bg-cyan-500 px-4 py-2 text-sm font-bold text-[#04101e] hover:bg-cyan-400"
+                className="min-h-11 rounded-xl bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-300 focus:ring-offset-2 focus:ring-offset-[#071427]"
               >
-                Save key
+                Save API Key
               </button>
 
-              <button
-                type="button"
-                onClick={clearApiKey}
-                className="min-h-10 rounded-lg border border-slate-600 px-3 py-2 text-sm font-semibold text-slate-300 hover:bg-slate-800"
-              >
-                Clear
-              </button>
-            </div>
-          </form>
-        </section>
+              {apiKey && (
+                <button
+                  type="button"
+                  onClick={handleClearApiKey}
+                  className="min-h-11 rounded-xl border border-slate-700 px-4 py-3 text-sm font-medium text-slate-300 transition hover:border-red-400/50 hover:text-red-300 focus:outline-none focus:ring-2 focus:ring-slate-500"
+                >
+                  Clear
+                </button>
+              )}
+            </form>
+          </div>
 
+          <p
+            id="api-key-message"
+            role="status"
+            aria-live="polite"
+            className={`mt-3 text-sm ${
+              apiKeyMessage.toLowerCase().includes("could not") ||
+              apiKeyMessage.toLowerCase().includes("please enter")
+                ? "text-amber-300"
+                : apiKeyMessage
+                  ? "text-emerald-300"
+                  : "text-slate-500"
+            }`}
+          >
+            {apiKeyMessage ||
+              "Your key is kept in this browser session and is not written into your source code."}
+          </p>
+        </div>
+      </section>
+
+      <main>
         <Hero
           selectedImage={selectedImage}
           onImageSelect={handleImageSelect}
