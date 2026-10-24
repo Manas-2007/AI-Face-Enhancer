@@ -214,21 +214,52 @@ export default function Preview({
 }) {
   const originalSrc = selectedImage?.preview || null;
 
-  const downloadResult = (model, src) => {
-    if (!src) return;
+ const downloadResult = async (model, src) => {
+  if (!src || !selectedImage?.file) return;
 
-    if (onDownload) {
-      onDownload(model.id, src);
-      return;
-    }
+  try {
+    const image = new Image();
+    image.src = src;
 
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = reject;
+    });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Could not convert image.");
+
+    context.drawImage(image, 0, 0);
+
+    const jpgBlob = await new Promise((resolve) => {
+      canvas.toBlob(resolve, "image/jpeg", 0.95);
+    });
+
+    if (!jpgBlob) throw new Error("JPG conversion failed.");
+
+    const downloadUrl = URL.createObjectURL(jpgBlob);
     const link = document.createElement("a");
-    link.href = src;
-    link.download = `${model.id}-enhanced.png`;
+
+    const originalName = selectedImage.file.name;
+    const baseName =
+      originalName.replace(/\.[^.]+$/, "") || "enhanced-image";
+
+    link.href = downloadUrl;
+    link.download = selectedImage.file.name;
+
     document.body.appendChild(link);
     link.click();
     link.remove();
-  };
+
+    setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+  } catch (error) {
+    console.error("Image download failed:", error);
+  }
+};
 
   return (
     <section className="w-full px-4 pb-8 pt-2 sm:px-5 lg:px-7">

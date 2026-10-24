@@ -6,8 +6,7 @@ import AI_Label from "./Components/AI_Label";
 import Preview from "./Components/Preview";
 import Comparison from "./Components/Comparison";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+const API_BASE_URL = "http://127.0.0.1:8000";
 
 const API_KEY_STORAGE_NAME = "face-enhancer-api-key";
 

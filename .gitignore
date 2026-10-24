@@ -74,3 +74,4 @@ service-account*.json
 **/.git.local-metadata/
 .DS_Store
 Thumbs.db
+.face_enhancer_api_key.txt
