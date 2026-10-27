@@ -528,7 +528,7 @@ export default function AI_Label({
                 style={{
                   background: `linear-gradient(90deg, transparent, ${model.color}, transparent)`,
                   opacity: isActive ? 1 : 0.35,
-                }}
+                }} 
               />
               {/* Model heading */}
               <div className="flex min-w-0 items-center gap-3">
