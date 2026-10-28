@@ -6,6 +6,7 @@ const MODELS = [
   { id: "restoreformer", name: "RestoreFormer++", color: "#24ddb0" },
   { id: "sparnethd", name: "SPARNetHD", color: "#ffae42" },
   { id: "rgformer", name: "RGFormer", color: "#ec67e5" },
+  { id: "fsrnet", name: "FSRNet", color: "#a78bfa" },
 ];
 
 function getResult(result) {
@@ -131,7 +132,7 @@ export default function Comparison({
           </div>
 
           <span className="rounded-full border border-blue-400/25 bg-blue-400/[0.07] px-3 py-1.5 text-xs font-semibold text-blue-200">
-            {readyCount}/4 outputs ready
+            {readyCount}/5 outputs ready
           </span>
         </div>
 
@@ -249,7 +250,7 @@ export default function Comparison({
             Select any model to inspect its generated result.
           </p>
 
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {models.map((model) => {
               const selected = activeModel === model.id;
 

@@ -15,6 +15,7 @@ const MODEL_IDS = [
   "restoreformer",
   "sparnethd",
   "rgformer",
+  "fsrnet",
 ];
 
 function readNumberHeader(response, name) {
@@ -350,7 +351,7 @@ function App() {
       );
     } else {
       setComparisonSummary(
-        "All four models failed. Check the individual errors shown in the comparison section."
+        "All selected models failed. Check the individual errors shown in the comparison section."
       );
     }
 

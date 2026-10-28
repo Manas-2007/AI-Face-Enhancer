@@ -65,6 +65,17 @@ RGFORMER_PREPARE_SCRIPT = RGFORMER_DIR / "prepare_rgformer_inputs.py"
 RGFORMER_WEIGHTS = RGFORMER_DIR / "weights" / "best.pt"
 RGFORMER_CODEFORMER_CACHE = RGFORMER_DIR / "weights" / "CodeFormer" / "codeformer.pth"
 
+# FSRNet
+FSRNET_DIR = PROJECT_ROOT / "backend" / "FSRNet-pytorch"
+FSRNET_PYTHON_EXE = (
+    Path(__file__).resolve().parent
+    / ".venv"
+    / "Scripts"
+    / "python.exe"
+)
+FSRNET_SCRIPT = FSRNET_DIR / "infer_single.py"
+FSRNET_WEIGHTS = FSRNET_DIR / "e099_psnr22.53.pth"
+
 
 # --------------------------------------------------
 # API AUTHENTICATION
@@ -226,10 +237,11 @@ def health_check():
         "status": (
             "ready"
             if (
-                sparnethd_ready
+                 sparnethd_ready
                 and codeformer_ready
                 and restoreformerpp_ready
                 and rgformer_ready
+                and fsrnet_ready
             )
             else "setup_incomplete"
         ),
@@ -256,7 +268,7 @@ def health_check():
                     "official inference script on first use."
                 ),
             },
-            "rgformer": {
+                        "rgformer": {
                 "ready": rgformer_ready,
                 "files": rgformer_files,
                 "input_requirements": (
@@ -267,6 +279,10 @@ def health_check():
                     "A face-region mask is estimated automatically from "
                     "the reference photo."
                 ),
+            },
+            "fsrnet": {
+                "ready": fsrnet_ready,
+                "files": fsrnet_files,
             },
         },
         "output_sizes": list(SUPPORTED_OUTPUT_SIZES),
@@ -500,6 +516,43 @@ def run_rgformer(
     ]
 
     return command, output_dir / "input.png", str(RGFORMER_DIR), "image/png", 900
+# FSRNet
+def run_fsrnet(input_path: Path, output_dir: Path):
+    required_files = [
+        FSRNET_PYTHON_EXE,
+        FSRNET_SCRIPT,
+        FSRNET_WEIGHTS,
+    ]
+
+    missing = [
+        str(path) for path in required_files
+        if not path.is_file()
+    ]
+
+    if missing:
+        raise HTTPException(
+            status_code=500,
+            detail="FSRNet setup is incomplete. Missing: "
+            + ", ".join(missing),
+        )
+
+    output_path = output_dir / "input.png"
+
+    command = [
+        str(FSRNET_PYTHON_EXE),
+        str(FSRNET_SCRIPT),
+        "--input", str(input_path),
+        "--output", str(output_path),
+        "--checkpoint", str(FSRNET_WEIGHTS),
+    ]
+
+    return (
+        command,
+        output_path,
+        str(FSRNET_DIR),
+        "image/png",
+        300,
+    )
 
 
 # --------------------------------------------------
@@ -516,10 +569,16 @@ def enhance_image(
     output_size: int = Form(512),
     ref_file: UploadFile | None = File(None),
 ):
-    if model_id not in ("codeformer", "restoreformer", "sparnethd", "rgformer"):
+    if model_id not in (
+    "codeformer",
+    "restoreformer",
+    "sparnethd",
+    "rgformer",
+    "fsrnet",
+):
         raise HTTPException(
             status_code=422,
-            detail="model_id must be 'codeformer', 'restoreformer', 'sparnethd', or 'rgformer'.",
+            detail="model_id must be 'codeformer', 'restoreformer', 'sparnethd',  or 'fsrnet'.",
         )
 
     if output_size not in SUPPORTED_OUTPUT_SIZES:
@@ -572,6 +631,7 @@ def enhance_image(
         "restoreformer": "RestoreFormer++",
         "sparnethd": "SPARNetHD",
         "rgformer": "RGFormer",
+        "fsrnet": "FSRNet",
     }[model_id]
 
     with tempfile.TemporaryDirectory(prefix=f"{model_id}_request_") as temporary_directory:
@@ -610,6 +670,18 @@ def enhance_image(
                 input_path=input_path,
                 reference_path=reference_path,
                 temp_root=temp_root,
+                output_dir=output_dir,
+            )
+
+        elif model_id == "fsrnet":
+            (
+                command,
+                output_path,
+                working_dir,
+                output_media_type,
+                timeout_seconds,
+            ) = run_fsrnet(
+                input_path=input_path,
                 output_dir=output_dir,
             )
         else:

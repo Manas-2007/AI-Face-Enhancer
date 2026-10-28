@@ -40,6 +40,16 @@ const models = [
     glow: "rgba(236, 103, 229, 0.20)",
     background: "rgba(236, 103, 229, 0.08)",
   },
+    {
+    id: "fsrnet",
+    name: "FSRNet",
+    subtitle: "Face Super-Resolution",
+    description: "Recover facial structure and details",
+    color: "#a78bfa",
+    light: "#ddd6fe",
+    glow: "rgba(167, 139, 250, 0.20)",
+    background: "rgba(167, 139, 250, 0.08)",
+  },
 ];
 
 const OUTPUT_SIZES = [128, 256, 512];
@@ -236,7 +246,7 @@ export default function AI_Label({
   const openScalePicker = (model) => {
     if (generatingModel || isComparing) return;
 
-    if (!["codeformer", "restoreformer", "sparnethd", "rgformer"].includes(model.id)) {
+    if (!["codeformer", "restoreformer", "sparnethd", "rgformer", "fsrnet"].includes(model.id)) {
       setMessage("This model is not connected yet.");
       return;
     }
@@ -275,7 +285,7 @@ export default function AI_Label({
       return;
     }
 
-    if (!["codeformer", "restoreformer", "sparnethd", "rgformer"].includes(model.id)) {
+    if (!["codeformer", "restoreformer", "sparnethd", "rgformer", "fsrnet"].includes(model.id)) {
       setMessage("This model is not connected yet.");
       return;
     }
@@ -327,7 +337,7 @@ export default function AI_Label({
     if (generatingModel || isComparing) return;
 
     if (!selectedImage?.file) {
-      setMessage("Upload an image first to compare the four models.");
+      setMessage("Upload an image first to compare the five models.");
       return;
     }
 
@@ -335,7 +345,7 @@ export default function AI_Label({
       setActiveModel("rgformer");
       setReferencePanelOpen(true);
       onModelSelect?.("rgformer");
-      setMessage("Add a high-quality reference photo of the same person in the RGFormer reference dropdown before comparing all four models.");
+      setMessage("Add a high-quality reference photo of the same person in the RGFormer reference dropdown before comparing all five models.");
       return;
     }
 
@@ -483,11 +493,11 @@ export default function AI_Label({
             </h2>
           </div>
           <p className="pl-3 text-xs leading-relaxed text-slate-400 sm:text-sm">
-            Select a model to enhance your image or compare all four.
+            Select a model to enhance your image or compare all five..
           </p>
         </div>
         <span className="rounded-full border border-blue-400/20 bg-blue-400/[0.07] px-3 py-1.5 text-[10px] font-semibold tracking-wide text-blue-200 sm:text-xs">
-          04 MODELS AVAILABLE
+          05 MODELS AVAILABLE
         </span>
       </div>
       {/* Model cards and comparison */}
@@ -791,7 +801,7 @@ export default function AI_Label({
               {isComparing ? "Comparing..." : "Compare Models"}
             </span>
             <span className="mt-1.5 block text-xs leading-relaxed text-slate-400">
-              Analyze all four outputs
+              Analyze all five outputs
             </span>
           </div>
           <span className="flex items-center gap-1 text-xs font-semibold text-cyan-300 transition-transform duration-300 group-hover:translate-x-1">
