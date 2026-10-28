@@ -74,6 +74,7 @@ FSRNET_PYTHON_EXE = (
     / "python.exe"
 )
 FSRNET_SCRIPT = FSRNET_DIR / "infer_single.py"
+FSRNET_PREPARE_SCRIPT = FSRNET_DIR / "prepare_fsrnet_input.py"
 FSRNET_WEIGHTS = FSRNET_DIR / "e099_psnr22.53.pth"
 
 
@@ -521,7 +522,12 @@ def run_fsrnet(input_path: Path, output_dir: Path):
     required_files = [
         FSRNET_PYTHON_EXE,
         FSRNET_SCRIPT,
+        FSRNET_PREPARE_SCRIPT,
         FSRNET_WEIGHTS,
+        SPARNET_PYTHON_EXE,
+        FACE_DETECTOR,
+        LANDMARK_PREDICTOR,
+        FFHQ_TEMPLATE,
     ]
 
     missing = [
@@ -536,12 +542,51 @@ def run_fsrnet(input_path: Path, output_dir: Path):
             + ", ".join(missing),
         )
 
+    aligned_path = output_dir / "fsrnet_aligned.png"
+
+
+    prepare_command = [
+        str(SPARNET_PYTHON_EXE),
+        str(FSRNET_PREPARE_SCRIPT),
+        "--input", str(input_path),
+        "--output", str(aligned_path),
+        "--detector", str(FACE_DETECTOR),
+        "--landmarks", str(LANDMARK_PREDICTOR),
+        "--template", str(FFHQ_TEMPLATE),
+    ]
+
+    try:
+        prepared = subprocess.run(
+            prepare_command,
+            cwd=str(FSRNET_DIR),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(
+            status_code=504,
+            detail="FSRNet face alignment took too long.",
+        )
+
+    if prepared.returncode != 0 or not aligned_path.is_file():
+        log = (prepared.stderr or "") + "\n" + (prepared.stdout or "")
+        print(f"FSRNet alignment failed:\n{log[-4000:]}")
+
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "FSRNet could not align the face. "
+                "Try a clearer photo with a visible face."
+            ),
+        )
+
     output_path = output_dir / "input.png"
 
     command = [
         str(FSRNET_PYTHON_EXE),
         str(FSRNET_SCRIPT),
-        "--input", str(input_path),
+        "--input", str(aligned_path),
         "--output", str(output_path),
         "--checkpoint", str(FSRNET_WEIGHTS),
     ]
