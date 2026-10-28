@@ -1,0 +1,2 @@
+Backend :
+$env:FACE_ENHANCER_API_KEY="ManasFaceEnhancer_local_2026"; .\.venv\Scripts\python.exe -m uvicorn app:app --reload

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-
+import BatchEnhancer from "./Components/BatchEnhancer";
 import Navbar from "./Components/Navbar";
 import Hero from "./Components/Hero";
 import AI_Label from "./Components/AI_Label";
@@ -477,6 +477,7 @@ function App() {
           onClear={handleClear}
           onRunAllModels={handleRunAllModels}
         />
+        <BatchEnhancer apiKey={apiKey} />
 
         <AI_Label
           selectedImage={selectedImage}
