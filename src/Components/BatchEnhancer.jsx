@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import JSZip from "jszip";
 
 const API_BASE_URL = "http://127.0.0.1:8000";
-const MAX_FILES = 10;
+const MAX_FILES = 50;
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 const MODELS = [
@@ -159,9 +159,9 @@ export default function BatchEnhancer({ apiKey }) {
       setMessage("Choose JPG, PNG, or WEBP images only.");
       setMessageIsError(true);
     } else if (details.length) {
-      setMessage(details.join(". ") + ". Maximum 10 images can be queued.");
+      setMessage(details.join(". ") + `. Maximum ${MAX_FILES} images can be queued.`);
     } else {
-      setMessage("Images added. You can add more images or select a folder, up to 10 total.");
+      setMessage(`Images added. You can add more images or select a folder, up to ${MAX_FILES} total.`);
     }
   };
 
@@ -304,7 +304,7 @@ export default function BatchEnhancer({ apiKey }) {
               Enhance Multiple Images
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-              Select up to 10 images or choose a whole folder. One AI model will process every image, and the successful JPG results will be packaged into one ZIP.
+              Select up to 50 images or choose a whole folder. One AI model will process every image, and the successful JPG results will be packaged into one ZIP.
             </p>
           </div>
           <span className="w-fit shrink-0 rounded-full border border-blue-400/20 bg-blue-400/[0.06] px-3 py-2 text-xs font-medium text-blue-200">
@@ -315,7 +315,7 @@ export default function BatchEnhancer({ apiKey }) {
         <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_0.85fr]">
           <div className="rounded-xl border border-slate-700/60 bg-[#030d1d]/70 p-4 sm:p-5">
             <h3 className="text-sm font-semibold text-slate-100">1. Add images</h3>
-            <p className="mt-1 text-xs leading-5 text-slate-500">JPG, PNG, or WEBP · max 10 MB per image · 10 images per batch</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">JPG, PNG, or WEBP · max 10 MB per image · 50 images per batch</p>
 
             <input
               ref={imageInputRef}
